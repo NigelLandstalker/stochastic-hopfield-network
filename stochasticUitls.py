@@ -1,4 +1,6 @@
-#For probability analysis, input is a binary string of arbitrary length.
+#Miscellaneous utilities for stochastic hopfield network optimiser
+#Author: Owen Hoffend
+
 import random, math
 
 def eval_prob(bitstream):
