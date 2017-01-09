@@ -1,7 +1,8 @@
 #Hopfield network main structure code
 #Author: Owen Hoffend
 
-import math, random, json
+import json
+import FitnessFunctions
 from stochasticUitls import *
 #Network parameters
 DEFAULT_THRESHOLD = 1
@@ -42,15 +43,16 @@ class hopfield_network():
 
 	def stochastic_run(self, probabilities, bitlength):
 		inputs = [list(i) for i in zip(*[gen_prob(prob, bitlength, True) for prob in probabilities])]
-		outputs = [self.run_once(inputs[index]) for index in range(len(inputs))]
-		return (inputs, outputs) #returns a tuple containing IO infor for fitness
+		outputs = zip(*[self.run_once(inputs[index]) for index in range(len(inputs))])
+		output_probs = [eval_prob(out_i) for out_i in outputs]
+		return output_probs #returns the probability of encountering a 1
 
 	def exportJSON(self, filename):
 		with open(filename, 'w') as outfile:
 			json.dump(self.__dict__, outfile)
 			outfile.close()
 
-def inportJSON(filename):
+def importJSON(filename):
 	with open(filename, 'r') as infile:
 		data = json.load(infile)
 		infile.close()
@@ -59,10 +61,18 @@ def inportJSON(filename):
 		return net
 
 if __name__ == "__main__":
-	network = hopfield_network(2)
-	network.mutate(internal_weight_prob=0.5, internal_weight_minmax=2, bias_prob=0.5, bias_minmax=2, threshold_prob=0.5, threshold_minmax=1, input_weight_prob=0.25, input_weight_minmax=2)
-	print(network.stochastic_run([0.5, 0.5], 5))
-	network.exportJSON("test.txt")
 
-	network2 = inportJSON("test.txt")
-	print(network2.__dict__)
+	fitnesslevel = 0
+	maxfitlevel = 0
+	cycles = 0
+	while fitnesslevel < 100:
+		network = hopfield_network(4)
+		#network = importJSON("test.txt")
+		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+		fitnesslevel = FitnessFunctions.s_AND_fit(network)
+		cycles += 1
+		if fitnesslevel > maxfitlevel:
+			maxfitlevel = fitnesslevel
+			network.exportJSON("test.txt")
+			print(str(maxfitlevel) + " " + str(cycles))
+			cycles = 0
