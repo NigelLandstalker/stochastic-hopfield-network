@@ -11,14 +11,26 @@ DEFAULT_OUTPUT = 0
 DEFAULT_INTERNAL_WEIGHT = 1
 DEFAULT_INPUT_WEIGHT = 1
 
+#Evolution parameters
+INITIAL_POPULATION_SIZE = 100
+SURVIVAL_PERCENTAGE = 50 #It may work better to have the survival percentage be a function of the generation number.
+#Population-based evolutionary algorithm:
+#Generate a set of random networks to serve as the seed population.
+#Run the required test function on each network and save the network's performance as a percentage value
+
 class hopfield_network():
-	def __init__(self, width):
+	def __init__(self, width, mutate_on_instantiation=False, **kwargs):
 		self.width = width
 		self.output = [DEFAULT_OUTPUT for _ in range(width)]
 		self.biases = [DEFAULT_BIAS for _ in range(width)]
 		self.thresholds = [DEFAULT_THRESHOLD for _ in range(width)]
 		self.input_weights = [DEFAULT_INPUT_WEIGHT for _ in range(width)]
 		self.internal_weights = [[DEFAULT_INTERNAL_WEIGHT for i in range(width)] for j in range(width)]
+
+		self.fitness = 0
+
+		if mutate_on_instantiation:
+			self.mutate(**kwargs)
 
 	def mutate(self, **kwargs):
 		if "threshold_prob" and "threshold_minmax" in kwargs:
@@ -60,19 +72,31 @@ def importJSON(filename):
 		net.thresholds, net.internal_weights, net.output, net.biases, net.input_weights = data["thresholds"], data["internal_weights"], data["output"], data["biases"], data["input_weights"]
 		return net
 
-if __name__ == "__main__":
+def run_evolution(generations, operation, **params):
+	function = getattr(FitnessFunctions, operation)
+	current_population = [hopfield_network(params["network_size"], True, **params) for _ in range(INITIAL_POPULATION_SIZE)]
+	for network in current_population:
+		network.fitness = function(network)
 
-	fitnesslevel = 0
-	maxfitlevel = 0
-	cycles = 0
-	while fitnesslevel < 100:
-		network = hopfield_network(4)
-		#network = importJSON("test.txt")
-		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
-		fitnesslevel = FitnessFunctions.s_AND_fit(network)
-		cycles += 1
-		if fitnesslevel > maxfitlevel:
-			maxfitlevel = fitnesslevel
-			network.exportJSON("test.txt")
-			print(str(maxfitlevel) + " " + str(cycles))
-			cycles = 0
+	current_population = [network for network in current_population if network.fitness >= SURVIVAL_PERCENTAGE]
+
+	for network in current_population:
+		print(network.fitness)
+
+
+if __name__ == "__main__":
+#	fitnesslevel = 0
+#	maxfitlevel = 0
+#	cycles = 0
+#	while fitnesslevel < 100:
+#		network = hopfield_network(4)
+#		#network = importJSON("test.txt")
+#		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+#		fitnesslevel = FitnessFunctions.s_AND_fit(network)
+#		cycles += 1
+#		if fitnesslevel > maxfitlevel:
+#			maxfitlevel = fitnesslevel
+#			network.exportJSON("test.txt")
+#			print(str(maxfitlevel) + " " + str(cycles))
+#			cycles = 0
+	run_evolution(10, "s_AND_fit", network_size=2,internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
