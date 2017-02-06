@@ -3,6 +3,9 @@
 
 import json
 import FitnessFunctions
+import math
+from Timer import Timer
+from copy import copy
 from stochasticUitls import *
 #Network parameters
 DEFAULT_THRESHOLD = 1
@@ -13,7 +16,6 @@ DEFAULT_INPUT_WEIGHT = 1
 
 #Evolution parameters
 INITIAL_POPULATION_SIZE = 100
-SURVIVAL_PERCENTAGE = 50 #It may work better to have the survival percentage be a function of the generation number.
 #Population-based evolutionary algorithm:
 #Generate a set of random networks to serve as the seed population.
 #Run the required test function on each network and save the network's performance as a percentage value
@@ -72,31 +74,68 @@ def importJSON(filename):
 		net.thresholds, net.internal_weights, net.output, net.biases, net.input_weights = data["thresholds"], data["internal_weights"], data["output"], data["biases"], data["input_weights"]
 		return net
 
-def run_evolution(generations, operation, **params):
+def run_evolution(generation_cnt, operation, **params):
+	#Runs an entire evolution cycle from start to finish
+	#generation_cnt defines the number of generations in the evolution cycle
+	#The initial population size is specified outside the function (for now)
 	function = getattr(FitnessFunctions, operation)
 	current_population = [hopfield_network(params["network_size"], True, **params) for _ in range(INITIAL_POPULATION_SIZE)]
-	for network in current_population:
-		network.fitness = function(network)
+	net_timer_avg = 0
+	for _ in range(generation_cnt):
+		with Timer() as gen_timer:
+			for network in current_population:
+				with Timer() as network_timer:
+					network.fitness = function(network)
+				net_timer_avg = (network_timer.secs + net_timer_avg) / 2
 
-	current_population = [network for network in current_population if network.fitness >= SURVIVAL_PERCENTAGE]
+			current_population.sort(key = lambda x: x.fitness, reverse=True)
+			current_population = current_population[:math.ceil(len(current_population) / 4)]
+			print([n.fitness for n in current_population])
 
-	for network in current_population:
-		print(network.fitness)
+		print("Average network test time was %s" % net_timer_avg)
+		print("Generation time was: %s" % gen_timer.secs)
+
+		with Timer() as mutation_timer:
+			for network in current_population:
+				if len(current_population) < INITIAL_POPULATION_SIZE:
+					mutation_prob = 1 - (network.fitness / 100)
+					params["internal_weight_prob"] = mutation_prob
+					params["input_weight_prob"] = mutation_prob
+					params["bias_prob"] = mutation_prob
+
+					for _ in range(3):
+						child_network = copy(network)
+						child_network.mutate(**params)
+						current_population.append(child_network)
+				else:
+					break
+
+		print("Mutation time was: %s" % mutation_timer.secs)
+
+	return current_population
+
+	#Evolution improvement ideas:
+	#Change the mutation chance to depend on the fitness level of the network. - CHECK
+	#Instead of completely random mutations, use a random plus/minus factor
+	#Alter the testcase length iteratively to safe on cycles
+	#Figure out how to use GPU to parallelize the testing!
+
+def test_fitness_randomly():
+	fitnesslevel = 0
+	maxfitlevel = 0
+	cycles = 0
+	while fitnesslevel < 100:
+		network = hopfield_network(2)
+		#network = importJSON("test.txt")
+		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+		fitnesslevel = FitnessFunctions.s_AND_fit(network)
+		cycles += 1
+		if fitnesslevel > maxfitlevel:
+			maxfitlevel = fitnesslevel
+			network.exportJSON("test.txt")
+			print(str(maxfitlevel) + " " + str(cycles))
+			cycles = 0
 
 
 if __name__ == "__main__":
-#	fitnesslevel = 0
-#	maxfitlevel = 0
-#	cycles = 0
-#	while fitnesslevel < 100:
-#		network = hopfield_network(4)
-#		#network = importJSON("test.txt")
-#		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
-#		fitnesslevel = FitnessFunctions.s_AND_fit(network)
-#		cycles += 1
-#		if fitnesslevel > maxfitlevel:
-#			maxfitlevel = fitnesslevel
-#			network.exportJSON("test.txt")
-#			print(str(maxfitlevel) + " " + str(cycles))
-#			cycles = 0
-	run_evolution(10, "s_AND_fit", network_size=2,internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	run_evolution(1000, "s_AND_fit", network_size=4, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)

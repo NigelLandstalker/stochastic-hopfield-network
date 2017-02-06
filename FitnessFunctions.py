@@ -5,8 +5,8 @@ import random
 
 #Testcase params
 BITSTREAM_LENGTH = 10
-TESTCASE_LENGTH = 100
-PROBABILITY_RANGE = 0.1
+TESTCASE_LENGTH = 5
+PROBABILITY_RANGE = 0.01
 
 def s_AND_fit(network): #Trains the network to output the correct value on its first output for each iteration
 	if network.width >= 2: #Network size requirement
