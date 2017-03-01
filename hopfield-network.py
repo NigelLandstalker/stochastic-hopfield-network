@@ -4,9 +4,14 @@
 import json
 import FitnessFunctions
 import math
+import multiprocessing
+import statistics
 from Timer import Timer
 from copy import copy
 from stochasticUitls import *
+
+PROCESSOR_CORES = 8
+
 #Network parameters
 DEFAULT_THRESHOLD = 1
 DEFAULT_BIAS = 0
@@ -16,9 +21,13 @@ DEFAULT_INPUT_WEIGHT = 1
 
 #Evolution parameters
 INITIAL_POPULATION_SIZE = 100
+RETRY_THRESHOLD = 0.01
 #Population-based evolutionary algorithm:
 #Generate a set of random networks to serve as the seed population.
 #Run the required test function on each network and save the network's performance as a percentage value
+
+def run_evolution_vargs(args):
+	return run_evolution(*args)
 
 class hopfield_network():
 	def __init__(self, width, mutate_on_instantiation=False, **kwargs):
@@ -28,8 +37,6 @@ class hopfield_network():
 		self.thresholds = [DEFAULT_THRESHOLD for _ in range(width)]
 		self.input_weights = [DEFAULT_INPUT_WEIGHT for _ in range(width)]
 		self.internal_weights = [[DEFAULT_INTERNAL_WEIGHT for i in range(width)] for j in range(width)]
-
-		self.fitness = 0
 
 		if mutate_on_instantiation:
 			self.mutate(**kwargs)
@@ -55,7 +62,7 @@ class hopfield_network():
 		else:
 			print("invalid input lengths")
 
-	def stochastic_run(self, probabilities, bitlength):
+	def stochastic_run(self, probabilities, bitlength): #Probably can't parallelize this, it's inherently sequential.
 		inputs = [list(i) for i in zip(*[gen_prob(prob, bitlength, True) for prob in probabilities])]
 		outputs = zip(*[self.run_once(inputs[index]) for index in range(len(inputs))])
 		output_probs = [eval_prob(out_i) for out_i in outputs]
@@ -74,43 +81,54 @@ def importJSON(filename):
 		net.thresholds, net.internal_weights, net.output, net.biases, net.input_weights = data["thresholds"], data["internal_weights"], data["output"], data["biases"], data["input_weights"]
 		return net
 
-def run_evolution(generation_cnt, operation, **params):
+def run_evolution(end_thresh, operation, **params):
 	#Runs an entire evolution cycle from start to finish
 	#generation_cnt defines the number of generations in the evolution cycle
 	#The initial population size is specified outside the function (for now)
 	function = getattr(FitnessFunctions, operation)
 	current_population = [hopfield_network(params["network_size"], True, **params) for _ in range(INITIAL_POPULATION_SIZE)]
-	net_timer_avg = 0
-	for _ in range(generation_cnt):
-		with Timer() as gen_timer:
-			for network in current_population:
-				with Timer() as network_timer:
-					network.fitness = function(network)
-				net_timer_avg = (network_timer.secs + net_timer_avg) / 2
+	last_population = copy(current_population)
+	last_gen_median_fitness = 0
+	improvement_tries = 0
+	while last_gen_median_fitness < end_thresh:
+		with multiprocessing.Pool(processes=PROCESSOR_CORES) as p:
+			fitnesses = p.map(function, current_population)
+			median_fitness = statistics.median(fitnesses)
 
-			current_population.sort(key = lambda x: x.fitness, reverse=True)
-			current_population = current_population[:math.ceil(len(current_population) / 4)]
-			print([n.fitness for n in current_population])
+		base_improvement_tries = last_gen_median_fitness * 10
+		#print("Base improvement tries: %s" % base_improvement_tries)
+		if median_fitness < (last_gen_median_fitness - RETRY_THRESHOLD) and improvement_tries < base_improvement_tries:
+			current_population = copy(last_population)
+			improvement_tries += 1
+			continue
+		else:
+			improvement_tries = 0
+			last_population = copy(current_population)
+			last_gen_median_fitness = median_fitness
 
-		print("Average network test time was %s" % net_timer_avg)
-		print("Generation time was: %s" % gen_timer.secs)
+		new_population = []
+		for index, network in enumerate(current_population):
+			if fitnesses[index] > median_fitness:
+				new_population.append(network)
 
-		with Timer() as mutation_timer:
-			for network in current_population:
-				if len(current_population) < INITIAL_POPULATION_SIZE:
-					mutation_prob = 1 - (network.fitness / 100)
-					params["internal_weight_prob"] = mutation_prob
-					params["input_weight_prob"] = mutation_prob
-					params["bias_prob"] = mutation_prob
+		breeding_population = len(new_population)
+		while len(new_population) < INITIAL_POPULATION_SIZE:
+			parent_index = random.choice(range(breeding_population))
+			if fitnesses[parent_index] < 0:
+				mutation_prob = 1
+			else:
+				mutation_prob = 1 - fitnesses[parent_index]
+			params["internal_weight_prob"] = mutation_prob
+			params["input_weight_prob"] = mutation_prob
+			params["bias_prob"] = mutation_prob
 
-					for _ in range(3):
-						child_network = copy(network)
-						child_network.mutate(**params)
-						current_population.append(child_network)
-				else:
-					break
+			child_network = copy(new_population[parent_index])
+			child_network.mutate(**params)
+			new_population.append(child_network)
 
-		print("Mutation time was: %s" % mutation_timer.secs)
+		current_population = new_population
+		#print("Current Population Size: %s" % len(current_population))
+		print("Current median fitness: %s" % median_fitness)
 
 	return current_population
 
@@ -118,7 +136,7 @@ def run_evolution(generation_cnt, operation, **params):
 	#Change the mutation chance to depend on the fitness level of the network. - CHECK
 	#Instead of completely random mutations, use a random plus/minus factor
 	#Alter the testcase length iteratively to safe on cycles
-	#Figure out how to use GPU to parallelize the testing!
+	#Implement multicore processing. Specifically, parallelize the fitness function application across the networks
 
 def test_fitness_randomly():
 	fitnesslevel = 0
@@ -138,4 +156,8 @@ def test_fitness_randomly():
 
 
 if __name__ == "__main__":
-	run_evolution(1000, "s_AND_fit", network_size=4, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	#with multiprocessing.Pool(processes=PROCESSOR_CORES) as p:
+		#outputs = p.map(run_evolution, ())
+	outputs = run_evolution(0.98, "s_AND_fit", network_size=2, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	for index, output in enumerate(outputs):
+		output.exportJSON("output" + str(index) + ".txt")
