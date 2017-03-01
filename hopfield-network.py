@@ -21,7 +21,10 @@ DEFAULT_INPUT_WEIGHT = 1
 
 #Evolution parameters
 INITIAL_POPULATION_SIZE = 100
-RETRY_THRESHOLD = 0.01
+RETRY_THRESHOLD = 0.1
+
+#TRY MAKING THE RANDOMIZED WEIGHTS AND SUCH RANDOMIZED MULTIPLES OF MORE DISCRETE VALUES SUCH AS 1/16 or 1/32 INSTEAD OF COMPLETELY RANDOM!
+
 #Population-based evolutionary algorithm:
 #Generate a set of random networks to serve as the seed population.
 #Run the required test function on each network and save the network's performance as a percentage value
@@ -156,8 +159,10 @@ def test_fitness_randomly():
 
 
 if __name__ == "__main__":
-	#with multiprocessing.Pool(processes=PROCESSOR_CORES) as p:
-		#outputs = p.map(run_evolution, ())
-	outputs = run_evolution(0.98, "s_AND_fit", network_size=2, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	outputs = run_evolution(0.94, "s_AND_fit", network_size=2, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	#outputs = run_evolution(0.94, "scaled_add_fit", network_size=4, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
 	for index, output in enumerate(outputs):
 		output.exportJSON("output" + str(index) + ".txt")
+
+
+	#AND fitness took about 2 minutes for 94% correctness

@@ -20,8 +20,11 @@ def gen_prob(prob, bitLength, isInt = False):
 		print("Invalid probability input")
 
 def list_rand_minmax(prob, list_, minmax):
-	#[random.uniform(0, 2 * minmax) - minmax if random.uniform(0, 1) <= prob else list_[index] for index in range(len(list_))]
-	return [(random.uniform(0, 2 * minmax) - minmax) if random.uniform(0, 1) <= prob else list_[index] for index in range(len(list_))]
+	return [(quantized_rand(minmax * 2, len(list_)) - minmax) if random.uniform(0, 1) <= prob else list_[index] for index in range(len(list_))]
+
+def quantized_rand(minmax, length):
+	quantization_interval = minmax / length
+	return random.randint(0, length) * quantization_interval
 
 def dot_product(list_a, list_b):
 	return math.fsum(a * b for a, b in zip(list_a, list_b))
