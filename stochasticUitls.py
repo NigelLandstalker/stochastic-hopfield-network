@@ -3,9 +3,12 @@
 
 import random, math
 
-def eval_prob(bitstream):
+def eval_prob(bitstream, isBoolean = False):
 	in_len = len(bitstream)
-	out_len = len([i for i in bitstream if i == 1])
+	if isBoolean:
+		out_len = len([i for i in bitstream if i == True])
+	else:
+		out_len = len([i for i in bitstream if i == 1])
 
 	return out_len / in_len
 
