@@ -26,7 +26,10 @@ class Circuit():
 		elif isinstance(right, Circuit):
 			self.inputs += right.inputs
 
-		self.num_inputs = len(inputs)
+		self.num_inputs = len(self.inputs)
+
+	def get_inputs(self):
+		return [_input.name + " " + str(_input.value) for _input in self.inputs]
 
 class And(Circuit):
 	def __init__(self, left, right):
@@ -42,6 +45,13 @@ class Or(Circuit):
 	def run(self):
 		return self.left.run() or self.right.run()
 
+class Not(Circuit):
+	def __init__(self, _input):
+		Circuit.__init__(self, _input, None)
+
+	def run(self):
+		return not self.left.run()
+
 class Input:
 	def __init__(self, name, value = False):
 		self.name = name
@@ -54,8 +64,18 @@ if __name__ == "__main__":
 	if sys.argv[1:] == []:
 		#Do the default thing
 		circuit = And(Or(Input('A', False), Input('B')), Input('C', True))
-		inputs = circuit.inputs
-		print(circuit.run()) 
+		xor = Or(And(Input('X'), Not(Input('Y'))), And(Not(Input('X')), Input('Y')))
+
+		_input = xor.inputs
+
+		_input[0].value = False
+		_input[1].value = False
+		_input[2].value = False
+		_input[3].value = False
+
+		_input_str = xor.get_inputs()
+		print(_input_str)
+		print(xor.run())
 		#su.gen_prob()
 	else:
 		main(sys.argv[1:]) #TODO: Implement parsing of equatons later
