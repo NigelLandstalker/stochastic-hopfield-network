@@ -2,7 +2,7 @@
 #Author: Owen Hoffend
 
 import json
-import FitnessFunctions
+import stochastic_fitness_functions
 import math
 import multiprocessing
 import statistics
@@ -21,7 +21,10 @@ DEFAULT_INPUT_WEIGHT = 1
 
 #Evolution parameters
 INITIAL_POPULATION_SIZE = 100
-RETRY_THRESHOLD = 0.1
+RETRY_THRESHOLD = 0.1 #Retry theshold as a percent decrease from the average fitness value
+BETTER_THAN_AVERAGE_BONUS = 0.1
+BASE_MUTATION_MODIFIER = 1
+MAX_RETRIES = 0
 
 #TRY MAKING THE RANDOMIZED WEIGHTS AND SUCH RANDOMIZED MULTIPLES OF MORE DISCRETE VALUES SUCH AS 1/16 or 1/32 INSTEAD OF COMPLETELY RANDOM!
 
@@ -88,39 +91,59 @@ def run_evolution(end_thresh, operation, **params):
 	#Runs an entire evolution cycle from start to finish
 	#generation_cnt defines the number of generations in the evolution cycle
 	#The initial population size is specified outside the function (for now)
-	function = getattr(FitnessFunctions, operation)
+	function = getattr(stochastic_fitness_functions, operation)
 	current_population = [hopfield_network(params["network_size"], True, **params) for _ in range(INITIAL_POPULATION_SIZE)]
 	last_population = copy(current_population)
-	last_gen_median_fitness = 0
+	last_gen_fitness_threshold = 0
+	last_gen_max_fitness = 0
+
 	improvement_tries = 0
-	while last_gen_median_fitness < end_thresh:
+	fitness_data = [0]
+
+	while last_gen_max_fitness < end_thresh:
 		with multiprocessing.Pool(processes=PROCESSOR_CORES) as p:
 			fitnesses = p.map(function, current_population)
-			median_fitness = statistics.median(fitnesses)
 
-		base_improvement_tries = last_gen_median_fitness * 10
-		#print("Base improvement tries: %s" % base_improvement_tries)
-		if median_fitness < (last_gen_median_fitness - RETRY_THRESHOLD) and improvement_tries < base_improvement_tries:
+		sorted_fitnesses = sorted(copy(fitnesses)) #This probably doesn't use too much processing power, relative to the main loop.
+		fitness_threshold = statistics.mean(sorted_fitnesses[(3 * math.floor(INITIAL_POPULATION_SIZE / 4)):]) #Keep only the top 25% of networks
+
+		if not last_gen_fitness_threshold == 0 and (fitness_threshold - last_gen_fitness_threshold) / last_gen_fitness_threshold < (RETRY_THRESHOLD * last_gen_fitness_threshold * 2) and improvement_tries < MAX_RETRIES:
+			#Retry threshold depends on the fitness threshold. Right now: at about 0.5 the threshold is equal to RETRY_THRESHOLD
 			current_population = copy(last_population)
+			print("Improvement tries: %s"  % improvement_tries)
 			improvement_tries += 1
 			continue
 		else:
 			improvement_tries = 0
 			last_population = copy(current_population)
-			last_gen_median_fitness = median_fitness
+			last_gen_fitness_threshold = fitness_threshold
 
-		new_population = []
+		#print(fitnesses)
+		print("Current median fitness: %s" % fitness_threshold)
+
+		breeding_population = []
+		breeding_population_fitnesses = []
 		for index, network in enumerate(current_population):
-			if fitnesses[index] > median_fitness:
-				new_population.append(network)
+			current_fitness = fitnesses[index]
+			if current_fitness > last_gen_fitness_threshold:
+				breeding_population.append(network)
+				breeding_population_fitnesses.append(current_fitness)
 
-		breeding_population = len(new_population)
+		if len(breeding_population) == 0:
+			breeding_population = [current_population[0]]
+			breeding_population_fitnesses = [fitnesses[0]]
+
+		new_population = copy(breeding_population)
+
 		while len(new_population) < INITIAL_POPULATION_SIZE:
-			parent_index = random.choice(range(breeding_population))
-			if fitnesses[parent_index] < 0:
+			parent_index = random.choice(range(len(breeding_population)))
+			if breeding_population_fitnesses[parent_index] < 0:
 				mutation_prob = 1
 			else:
-				mutation_prob = 1 - fitnesses[parent_index]
+				mutation_prob = (1 - fitnesses[parent_index]) * BASE_MUTATION_MODIFIER
+				if fitnesses[parent_index] > statistics.mean(fitness_data):
+					mutation_prob *= BETTER_THAN_AVERAGE_BONUS
+
 			params["internal_weight_prob"] = mutation_prob
 			params["input_weight_prob"] = mutation_prob
 			params["bias_prob"] = mutation_prob
@@ -130,10 +153,12 @@ def run_evolution(end_thresh, operation, **params):
 			new_population.append(child_network)
 
 		current_population = new_population
-		#print("Current Population Size: %s" % len(current_population))
-		print("Current median fitness: %s" % median_fitness)
 
-	return current_population
+		last_gen_max_fitness = max(fitnesses)
+		fitness_data.append(fitness_threshold)
+		print("Max fitness: %s" % last_gen_max_fitness)
+
+	return [fitness_data, current_population]
 
 	#Evolution improvement ideas:
 	#Change the mutation chance to depend on the fitness level of the network. - CHECK
@@ -149,7 +174,7 @@ def test_fitness_randomly():
 		network = hopfield_network(2)
 		#network = importJSON("test.txt")
 		network.mutate(internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
-		fitnesslevel = FitnessFunctions.s_AND_fit(network)
+		fitnesslevel = stochastic_fitness_functions.AND_fit(network)
 		cycles += 1
 		if fitnesslevel > maxfitlevel:
 			maxfitlevel = fitnesslevel
@@ -157,12 +182,20 @@ def test_fitness_randomly():
 			print(str(maxfitlevel) + " " + str(cycles))
 			cycles = 0
 
-
 if __name__ == "__main__":
-	outputs = run_evolution(0.94, "s_AND_fit", network_size=2, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
-	#outputs = run_evolution(0.94, "scaled_add_fit", network_size=4, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
-	for index, output in enumerate(outputs):
-		output.exportJSON("output" + str(index) + ".txt")
+	#outputs = run_evolution(0.99, "sine_fit", network_size=10, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+
+	outputs = run_evolution(0.5, "sine_fit", network_size=10, internal_weight_prob=1, internal_weight_minmax=1, bias_prob=1, bias_minmax=1, input_weight_prob=1, input_weight_minmax=1)
+	data = outputs[0] #Array of generation-spaced median fitness values
+	import plotly as py
+	N = len(data)
+	py.offline.plot({
+		"data": [py.graph_objs.Scatter(x = [i for i in range(N)], y = data)],
+		"layout": py.graph_objs.Layout(title="Fitness vs. Generations",)
+	}, filename="D:/School-2016-2017/Research/stochastic-hopfield-network/output2.html")
+
+	#for index, output in enumerate(outputs):
+		#output.exportJSON("output" + str(index) + ".txt")
 
 
 	#AND fitness took about 2 minutes for 94% correctness

@@ -20,9 +20,11 @@ def gen_prob(prob, bitLength, isInt = False):
 		print("Invalid probability input")
 
 def list_rand_minmax(prob, list_, minmax):
+	#return [(list_[index] + (quantized_rand(minmax * 2, len(list_)) - minmax)) / 2 if random.uniform(0, 1) <= prob else list_[index] for index in range(len(list_))]
 	return [(quantized_rand(minmax * 2, len(list_)) - minmax) if random.uniform(0, 1) <= prob else list_[index] for index in range(len(list_))]
 
 def quantized_rand(minmax, length):
+	#Divide the minmax (usually 1) up by the number of inputs that the node receives. This should be implementable with digital hardware.
 	quantization_interval = minmax / length
 	return random.randint(0, length) * quantization_interval
 
