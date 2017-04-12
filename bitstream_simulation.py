@@ -98,25 +98,11 @@ class Input:
 class D_FF(Circuit):
 	def __init__(self, left, right):
 		Circuit.__init__(self, left, right) #Left = data, right = clock
-		self.master_rsnor = Rsnor(Input('set'), Input('reset'))
-		self.slave_rsnor = Rsnor(Input('set'), Input('reset'))
+		self.master_rsnor = Rsnor(And(left, right), And(Not(left), right))
+		self.slave_rsnor = Rsnor(And(self.master_rsnor, Not(right)), And(Not(self.master_rsnor), Not(right)))
 
 	def run(self):
-		data = self.left.run()
-		clock = self.right.run()
-
-		#Running master RS nor:
-		master_set = data and clock
-		master_reset = (not data) and clock
-		self.master_rsnor.set_input('set', master_set)
-		master_out = self.master_rsnor.set_input('reset', master_reset)
-
-		#Running slave RS nor:
-		slave_set = master_out and (not clock)
-		slave_reset = (not master_out) and (not clock)
-		self.slave_rsnor.set_input('set', slave_set)
-		return self.slave_rsnor.set_input('reset', slave_reset)
-
+		return self.slave_rsnor.run()
 
 def random_bitstream_sim(circuit, input_probs, length):
 	streams = {name: su.gen_prob(input_probs[name], length) for name in input_probs}
