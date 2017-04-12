@@ -4,10 +4,7 @@
 
 import stochasticUitls as su
 import sys
-
 #Functions in this simulator use the True/False functionality of stochasticUtils
-
-MAX_RUNS = 1000 #Maximum iterations of a top-level circuit
 
 def main(argv): #For command-line operation (implement later)
 	print(str(argv))
@@ -32,19 +29,9 @@ class Circuit():
 		__add_input(left)
 		__add_input(right)
 
-		self.num_inputs = len(self.inputs)
+		self.num_inputs = len(set(self.inputs))
 
-#	def replace_input(self, name_to_replace, new_input): #Used for building circuits with feedback
-#		index = self.input_names.index(name_to_replace)
-#		self.input_names[index] = name_to_replace
-#		self.inputs[index] = new_input
-#
-#		if name_to_replace in self.left.input_names:
-#			self.left = new_input
-#		else:
-#			self.right = new_input
-
-	def set_input(self, name, value):
+	def set_input(self, name, value): #Sets the value of an input to this circuit, affecting all inputs of the same name.
 		if name in self.input_names:
 			for index, current_name in enumerate(self.input_names):
 				if current_name == name:
@@ -52,8 +39,13 @@ class Circuit():
 		else:
 			raise ValueError("No variable of name %s exists" % name)
 
-	def get_inputs(self):
+		return self.run() #Runs the circuit. USE THIS TO RUN EVERY CIRCUIT
+
+	def get_input_string(self): #Just for testing purposes
 		return [_input.name + " " + str(_input.value) for _input in self.inputs]
+
+	def run(self):
+		pass
 
 class Rsnor(Circuit): #Internal memory element instead of dealing with feedback within the recursion tree.
 	def __init__(self, left, right):
@@ -72,6 +64,7 @@ class Rsnor(Circuit): #Internal memory element instead of dealing with feedback 
 
 		return self.memory
 
+#BASE LOGIC CLASSES
 class And(Circuit):
 	def __init__(self, left, right):
 		Circuit.__init__(self, left, right)
@@ -101,27 +94,64 @@ class Input:
 	def run(self):
 		return self.value
 
+#BEGIN LOGIC LIBRARY:
+class D_FF(Circuit):
+	def __init__(self, left, right):
+		Circuit.__init__(self, left, right) #Left = data, right = clock
+		self.master_rsnor = Rsnor(Input('set'), Input('reset'))
+		self.slave_rsnor = Rsnor(Input('set'), Input('reset'))
+
+	def run(self):
+		data = self.left.run()
+		clock = self.right.run()
+
+		#Running master RS nor:
+		master_set = data and clock
+		master_reset = (not data) and clock
+		self.master_rsnor.set_input('set', master_set)
+		master_out = self.master_rsnor.set_input('reset', master_reset)
+
+		#Running slave RS nor:
+		slave_set = master_out and (not clock)
+		slave_reset = (not master_out) and (not clock)
+		self.slave_rsnor.set_input('set', slave_set)
+		return self.slave_rsnor.set_input('reset', slave_reset)
+
+
+def random_bitstream_sim(circuit, input_probs, length):
+	streams = {name: su.gen_prob(input_probs[name], length) for name in input_probs}
+	return bitstream_sim(circuit, streams, length)
+
+def bitstream_sim(circuit, streams, length): #Runs a stochastic simulation on this circuit
+	#input_probs is a dictionary of {'input_name': probability_value}
+	stream_width = len(streams)
+	if stream_width == circuit.num_inputs:
+		outputs = []
+		for stream_index in range(length):
+			for name in streams:
+				circuit.set_input(name, streams[name][stream_index]) #Assign the circuit's inputs for this iteration of the stochastic simulation.
+			outputs.append(circuit.run())
+		return outputs
+	else:
+		raise ValueError('Bitstream count: %s does not match circuit input count: %s' % (len(streams), circuit.num_inputs))
+
 if __name__ == "__main__":
 	if sys.argv[1:] == []:
 		#Do the default thing
-		circuit = And(Or(Input('A', False), Input('B')), Input('C', True))
 		xor = Or(And(Input('X'), Not(Input('Y'))), And(Not(Input('X')), Input('Y')))
-		xor.set_input('X', True)
-		xor.set_input('Y', True)
+		and_test = And(Input('A'), Input('B'))
+		_input_probs = {'A': 0.5, 'B': 0.5}
+		#output = random_bitstream_sim(and_test, _input_probs, 10000)
+		output = bitstream_sim(and_test, {'A': [True, False, True, False], 'B':[True, False, True, False]}, 4)
+		print(su.eval_prob(output))
 
-		rsnor = Rsnor(Input('S'), Input('R'))
-		rsnor.set_input('S', True)
-		print(rsnor.run())
-		rsnor.set_input('S', False)
-		print(rsnor.run())
-		rsnor.set_input('R', True)
-		print(rsnor.run())
-		rsnor.set_input('R', False)
-		print(rsnor.run())
+		dff = D_FF(Input('data'), Input('clock'))
+		print(dff.set_input('data', True))
+		print(dff.set_input('clock', True))
+		print(dff.set_input('clock', False))
 
-		_input_str = xor.get_inputs()
-		print(_input_str)
-		print(xor.run())
-
+		print(dff.set_input('data', False))
+		print(dff.set_input('clock', True))
+		print(dff.set_input('clock', False))
 	else:
 		main(sys.argv[1:]) #TODO: Implement parsing of equatons later

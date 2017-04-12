@@ -16,9 +16,9 @@ def eval_prob(bitstream, isBoolean = False):
 def gen_prob(prob, bitLength, isInt = False):
 	if(prob <= 1):
 		if isInt:
-			return [1  if i <= prob else 0 for i in [random.uniform(0,1) for _ in range(bitLength)]]
+			return [1 if i <= prob else 0 for i in [random.uniform(0,1) for _ in range(bitLength)]]
 		else:
-			return [True  if i <= prob else False for i in [random.uniform(0,1) for _ in range(bitLength)]]
+			return [True if i <= prob else False for i in [random.uniform(0,1) for _ in range(bitLength)]]
 	else:
 		print("Invalid probability input")
 
