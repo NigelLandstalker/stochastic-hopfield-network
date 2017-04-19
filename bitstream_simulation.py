@@ -25,6 +25,8 @@ class Circuit():
 			elif isinstance(new_input, Circuit):
 				self.inputs += new_input.inputs
 				self.input_names += [_input.name for _input in new_input.inputs]
+			else:
+				raise TypeError("New circuit element is not a circuit element or input.")
 
 		__add_input(left)
 		__add_input(right)
@@ -39,7 +41,7 @@ class Circuit():
 		else:
 			raise ValueError("No variable of name %s exists" % name)
 
-		return self.run() #Runs the circuit. USE THIS TO RUN EVERY CIRCUIT
+		#return self.run() #Runs the circuit. USE THIS TO RUN EVERY CIRCUIT
 
 	def get_input_string(self): #Just for testing purposes
 		return [_input.name + " " + str(_input.value) for _input in self.inputs]
@@ -81,7 +83,7 @@ class Or(Circuit):
 
 class Not(Circuit):
 	def __init__(self, _input):
-		Circuit.__init__(self, _input, None)
+		Circuit.__init__(self, _input, Input('null'))
 
 	def run(self):
 		return not self.left.run()
@@ -95,6 +97,16 @@ class Input:
 		return self.value
 
 #BEGIN LOGIC LIBRARY:
+
+#COMBINATIONAL LOGIC CIRCUITS:
+class Xor(Circuit):
+	def __init__(self, left, right):
+		Circuit.__init__(self, left, right)
+
+	def run(self):
+		return Or(And(Not(self.left), self.right), And(self.left, Not(self.right)))
+
+#MEMORY CIRCUITS:
 class D_FF(Circuit):
 	def __init__(self, left, right):
 		Circuit.__init__(self, left, right) #Left = data, right = clock
@@ -103,6 +115,42 @@ class D_FF(Circuit):
 
 	def run(self):
 		return self.slave_rsnor.run()
+
+class T_FF(Circuit):
+	def __init__(self, left):
+		Circuit.__init__(self, left, Input('null'))
+		self.memory = Input('memory')
+		self.memory.value = False
+
+	def run(self):
+		if self.left.run():
+			self.memory.value = Not(self.memory).run()
+		return self.memory.value
+
+class Balancer1(Circuit): #balances the 1s
+	def __init__(self, left, right):
+		Circuit.__init__(self, left, right)
+		self.tff = T_FF(Xor(left, right)) #Toggle the internal memory iff one but not both of the inputs are 1 (if both are true, internal memory "toggles twice," resulting in no change)
+
+	def run(self): #For now I'm just returning a list of the two outputs. In the future maybe want to find a way to specify output count.
+		state = Input('state')
+		state.value = self.tff.run()
+		return [Or(And(state, Or(self.left, self.right)), And(self.left, self.right)).run() , Or(And(Not(state), Or(self.left, self.right)), And(self.left, self.right)).run()]
+
+class AndBalancer(Circuit):
+	def __init__(self, left, right):
+		Circuit.__init__(self, left, right)
+		self.bal = Balancer1(left, right)
+
+	def run(self):
+		outputs = self.bal.run() #Run the balancer with the new inputs. 
+		top = Input('top')
+		bot = Input('bot')
+
+		top.value = outputs[0]
+		bot.value = outputs[1]
+
+		return And(top, bot)
 
 def random_bitstream_sim(circuit, input_probs, length):
 	streams = {name: su.gen_prob(input_probs[name], length) for name in input_probs}
@@ -129,15 +177,48 @@ if __name__ == "__main__":
 		_input_probs = {'A': 0.5, 'B': 0.5}
 		#output = random_bitstream_sim(and_test, _input_probs, 10000)
 		output = bitstream_sim(and_test, {'A': [True, False, True, False], 'B':[True, False, True, False]}, 4)
-		print(su.eval_prob(output))
+		#print(su.eval_prob(output))
 
-		dff = D_FF(Input('data'), Input('clock'))
-		print(dff.set_input('data', True))
-		print(dff.set_input('clock', True))
-		print(dff.set_input('clock', False))
+#		dff = D_FF(Input('data'), Input('clock'))
+#		print(dff.set_input('data', True))
+#		print(dff.set_input('clock', True))
+#		print(dff.set_input('clock', False))
+#
+#		print(dff.set_input('data', False))
+#		print(dff.set_input('clock', True))
+#		print(dff.set_input('clock', False))
+#
+#		tff = T_FF(Input('toggle'))
+#		print(tff.set_input('toggle', True))
+#		#print(tff.set_input('toggle', False))
+#		print(tff.set_input('toggle', True))
+#		print(tff.set_input('toggle', True))
+#		print(tff.set_input('toggle', True))
 
-		print(dff.set_input('data', False))
-		print(dff.set_input('clock', True))
-		print(dff.set_input('clock', False))
+		bal = Balancer1(Input('top'), Input('bottom'))
+
+		bal.set_input('top', True)
+		bal.set_input('bottom', True)
+		print(bal.run())
+
+		_input_probs = {'top': 0.5, 'bottom': 0.5}
+		bal_output = random_bitstream_sim(bal, _input_probs, 10)
+		transposed_output = list(map(list, zip(*bal_output)))
+
+		print("Single Balancer top: %s" % su.eval_prob(transposed_output[0]))
+		print("Single Balancer bot: %s" % su.eval_prob(transposed_output[1]))
+
+		andbal = AndBalancer(Input('top'), Input('bottom'))
+		andbal_output = random_bitstream_sim(andbal, _input_probs, 10)
+		print("andbal output %s" % su.eval_prob(andbal_output))
+
 	else:
-		main(sys.argv[1:]) #TODO: Implement parsing of equatons later
+		main(sys.argv[1:]) #TODO: Implement parsing of equations later
+
+#Results:
+#It is known that the MUX does scaled addition as follows: sx + (1 - s)y
+#The 1 balancer is experimentally shown to compute the function: P_out = 0.5(x + y) (the same probability exists on both outputs. These probabilities are correlated but out of phase)
+#TODO: Can out-of-phase probabilities be useful in some way?
+#The theoretical n-input counting network therefore produces the function: (1 / n)(sum(x)), where x is the input vector. This is exactly an average function.
+#Can a mux
+#Or(Balance(x, y)) should be 0 no matter what OR SHOULD IT....
